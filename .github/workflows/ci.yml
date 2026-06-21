@@ -1,8 +1,9 @@
 name: E-commerce QA — Robot Framework
 
 # Gatilhos:
-#  - push/PR na main: roda tudo (web + mobile) nos 3 ambientes.
-#  - workflow_dispatch: execução manual com seleção de ambiente e suíte.
+#  - push/PR na main: roda a suíte web nos 3 ambientes e publica o dashboard.
+#  - workflow_dispatch: execução manual com seleção de ambiente.
+# Nota: a suíte MOBILE (Appium/emulador) roda apenas localmente — ver README.
 on:
   push:
     branches: [main]
@@ -15,11 +16,6 @@ on:
         type: choice
         default: all
         options: [all, QA1, QA2, QA3]
-      suite:
-        description: "Suíte a executar"
-        type: choice
-        default: all
-        options: [all, web, mobile]
 
 # Segurança: token com o mínimo possível por padrão (apenas leitura do repo).
 # O job de deploy eleva as permissões só onde precisa (ver abaixo).
@@ -36,21 +32,18 @@ env:
 
 jobs:
   # ----------------------------------------------------------------------------
-  # setup — calcula a matriz (ambientes/suítes) a partir dos inputs do dispatch.
+  # setup — calcula a matriz de ambientes a partir do input do dispatch.
   # ----------------------------------------------------------------------------
   setup:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
       envs: ${{ steps.matrix.outputs.envs }}
-      run_web: ${{ steps.matrix.outputs.run_web }}
-      run_mobile: ${{ steps.matrix.outputs.run_mobile }}
     steps:
       - id: matrix
         shell: bash
         env:
           IN_ENV: ${{ github.event.inputs.environment || 'all' }}
-          IN_SUITE: ${{ github.event.inputs.suite || 'all' }}
         run: |
           set -euo pipefail
           if [ "$IN_ENV" = "all" ]; then
@@ -58,24 +51,14 @@ jobs:
           else
             envs="[\"$IN_ENV\"]"
           fi
-          case "$IN_SUITE" in
-            web)    run_web=true;  run_mobile=false ;;
-            mobile) run_web=false; run_mobile=true  ;;
-            *)      run_web=true;  run_mobile=true   ;;
-          esac
-          {
-            echo "envs=$envs"
-            echo "run_web=$run_web"
-            echo "run_mobile=$run_mobile"
-          } >> "$GITHUB_OUTPUT"
-          echo "Ambientes: $envs | web=$run_web mobile=$run_mobile"
+          echo "envs=$envs" >> "$GITHUB_OUTPUT"
+          echo "Ambientes: $envs"
 
   # ----------------------------------------------------------------------------
   # web — suíte desktop (Browser/Playwright). Matriz por ambiente.
   # ----------------------------------------------------------------------------
   web:
     needs: setup
-    if: needs.setup.outputs.run_web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -124,85 +107,10 @@ jobs:
           if-no-files-found: warn
 
   # ----------------------------------------------------------------------------
-  # mobile — suíte Chrome no emulador Android (Appium). Matriz por ambiente.
-  # Job mais pesado/frágil: KVM + emulador + Appium. Tolerante a falha.
-  # ----------------------------------------------------------------------------
-  mobile:
-    needs: setup
-    if: needs.setup.outputs.run_mobile == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        env: ${{ fromJson(needs.setup.outputs.envs) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Habilitar KVM (acelera o emulador)
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Instalar dependências (mobile)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          npm install -g appium
-          appium driver install uiautomator2
-
-      - name: Executar suíte MOBILE (${{ matrix.env }})
-        continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          ram-size: 4096M
-          disable-animations: true
-          emulator-options: -no-snapshot -no-window -no-boot-anim -gpu swiftshader_indirect -camera-back none
-          script: |
-            ENVL=$(echo "${{ matrix.env }}" | tr '[:upper:]' '[:lower:]')
-            appium --port 4723 --log appium.log &
-            npx --yes wait-on@7 -t 60000 http-get://127.0.0.1:4723/status
-            # `timeout` impede que a sessão Appium fique pendurada (download de
-            # chromedriver, captcha do site etc.) consumindo todo o tempo do job.
-            # Sempre sai 0 para preservar o artefato; o status real vai no dashboard.
-            timeout 600 robot \
-              --variable ENV:${{ matrix.env }} \
-              --variable AVD_NAME:test \
-              --variable DEVICE_NAME:emulator-5554 \
-              --variablefile resources/variables/${ENVL}_vars.py \
-              --outputdir results/mobile-${{ matrix.env }} \
-              --name Mobile_${{ matrix.env }} \
-              tests/mobile/ || true
-
-      - name: Publicar artefato (mobile-${{ matrix.env }})
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mobile-${{ matrix.env }}
-          path: results/mobile-${{ matrix.env }}/
-          retention-days: 7
-          if-no-files-found: warn
-
-  # ----------------------------------------------------------------------------
   # report — mescla os output.xml, gera dashboard e monta o site do Pages.
   # ----------------------------------------------------------------------------
   report:
-    needs: [web, mobile]
+    needs: web
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -269,7 +177,7 @@ jobs:
           </head>
           <body>
             <h1>E-commerce QA — Robot Framework</h1>
-            <p>Resultados da execução automatizada (web + mobile, QA1/QA2/QA3).</p>
+            <p>Resultados da execução automatizada da suíte web (QA1/QA2/QA3).</p>
             <ul>
               <li><a href="dashboard.html">📊 Dashboard de métricas<small>Pass/fail por suíte, teste e keyword</small></a></li>
               <li><a href="report.html">📄 Relatório consolidado<small>Robot Framework report</small></a></li>
