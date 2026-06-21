@@ -1,9 +1,5 @@
 name: E-commerce QA — Robot Framework
 
-# Gatilhos:
-#  - push/PR na main: roda a suíte web nos 3 ambientes e publica o dashboard.
-#  - workflow_dispatch: execução manual com seleção de ambiente.
-# Nota: a suíte MOBILE (Appium/emulador) roda apenas localmente — ver README.
 on:
   push:
     branches: [main]
@@ -17,12 +13,9 @@ on:
         default: all
         options: [all, QA1, QA2, QA3]
 
-# Segurança: token com o mínimo possível por padrão (apenas leitura do repo).
-# O job de deploy eleva as permissões só onde precisa (ver abaixo).
 permissions:
   contents: read
 
-# Serializa deploys do Pages por ref e cancela runs supersedidas.
 concurrency:
   group: pages-${{ github.ref }}
   cancel-in-progress: true
@@ -31,9 +24,6 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
-  # ----------------------------------------------------------------------------
-  # setup — calcula a matriz de ambientes a partir do input do dispatch.
-  # ----------------------------------------------------------------------------
   setup:
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -54,9 +44,6 @@ jobs:
           echo "envs=$envs" >> "$GITHUB_OUTPUT"
           echo "Ambientes: $envs"
 
-  # ----------------------------------------------------------------------------
-  # web — suíte desktop (Browser/Playwright). Matriz por ambiente.
-  # ----------------------------------------------------------------------------
   web:
     needs: setup
     runs-on: ubuntu-latest
@@ -83,7 +70,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          rfbrowser init chromium   # só o engine usado, não os 3
+          rfbrowser init chromium
 
       - name: Executar suíte WEB (${{ matrix.env }})
         continue-on-error: true
@@ -106,9 +93,6 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  # ----------------------------------------------------------------------------
-  # report — mescla os output.xml, gera dashboard e monta o site do Pages.
-  # ----------------------------------------------------------------------------
   report:
     needs: web
     if: always()
@@ -132,6 +116,25 @@ jobs:
         with:
           path: artifacts
 
+      - name: Copiar screenshots para o site (preservando por ambiente)
+        run: |
+          set -euo pipefail
+          mkdir -p site/browser/screenshot
+          for artifact_dir in artifacts/*/; do
+            env_name=$(basename "$artifact_dir")
+            screenshot_dir="$artifact_dir/browser/screenshot"
+            [ -d "$screenshot_dir" ] || continue
+            for png in "$screenshot_dir"/*.png; do
+              [ -f "$png" ] || continue
+              filename=$(basename "$png")
+              new_name="${env_name}-${filename}"
+              cp "$png" "site/browser/screenshot/$new_name"
+              output_xml="$artifact_dir/output.xml"
+              [ -f "$output_xml" ] && \
+                sed -i "s|browser/screenshot/${filename}|browser/screenshot/${new_name}|g" "$output_xml"
+            done
+          done
+
       - name: Mesclar resultados e gerar dashboard
         run: |
           set -euo pipefail
@@ -139,14 +142,11 @@ jobs:
           shopt -s globstar nullglob
           outputs=(artifacts/**/output.xml)
           if [ ${#outputs[@]} -eq 0 ]; then
-            echo "Nenhum output.xml encontrado — gerando página de aviso."
             echo "<h1>Sem resultados nesta execução</h1>" > site/index.html
             touch site/.nojekyll
             exit 0
           fi
           echo "Mesclando ${#outputs[@]} arquivo(s) de resultado."
-          # --nostatusrc: rebot retorna 0 mesmo com testes falhos (anti-bot dos
-          # sites reais derruba parte dos casos); sem isso o `bash -e` mata o step.
           rebot \
             --nostatusrc \
             --name "E-commerce QA" \
@@ -192,9 +192,6 @@ jobs:
         with:
           path: site
 
-  # ----------------------------------------------------------------------------
-  # deploy — publica no GitHub Pages. Único job com permissões elevadas.
-  # ----------------------------------------------------------------------------
   deploy:
     needs: report
     if: github.ref == 'refs/heads/main' && always()
