@@ -1,0 +1,4 @@
+# Dependências usadas APENAS no job de relatório do CI (geração do dashboard).
+# Mantidas fora do requirements.txt runtime para não inflar os jobs de teste.
+robotframework>=6.1,<8.0
+robotframework-metrics>=3.6.0

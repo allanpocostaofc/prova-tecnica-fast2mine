@@ -1,0 +1,31 @@
+# ===== Robot Framework / resultados de execução =====
+results/
+output/
+output.xml
+log.html
+report.html
+*.png
+geckodriver-*.log
+*log.txt
+
+# ===== Browser Library (Playwright) =====
+node_modules/
+browser/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.Python
+
+# ===== IDE / Editor =====
+.idea/
+.vscode/
+*.swp
+
+# ===== Sistema operacional =====
+.DS_Store
+Thumbs.db
