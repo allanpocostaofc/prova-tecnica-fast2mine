@@ -29,15 +29,20 @@ appium driver install uiautomator2   # driver Android do Appium (suíte mobile)
 
 ## Execução
 
-### Tudo junto (web + mobile)
+### Tudo junto (web + mobile, todos os ambientes)
 
-```bash
-run_tests.bat QA1        # Windows
-./run_tests.sh QA1       # Linux/macOS
+```powershell
+.\run_all_tests.ps1          # PowerShell — roda QA1, QA2 e QA3 (web + mobile)
 ```
 
-> A suíte mobile exige emulador e Appium no ar (veja abaixo). Para rodar só web ou só
-> mobile, use os comandos `robot` diretos.
+```bash
+./run_tests.sh QA1           # Linux/macOS — um ambiente por vez
+run_tests.bat QA1            # Windows Batch — um ambiente por vez
+```
+
+> O script PowerShell itera pelos três ambientes automaticamente e exibe um resumo
+> ao final. A suíte mobile exige emulador e Appium no ar (veja abaixo); sem isso,
+> as execuções mobile falharão, mas as web continuarão normalmente.
 
 ### Somente Web
 
