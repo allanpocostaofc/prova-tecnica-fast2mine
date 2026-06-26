@@ -53,15 +53,15 @@ jobs:
       matrix:
         env: ${{ fromJson(needs.setup.outputs.envs) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
       - name: Cache navegadores do Playwright
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
@@ -85,7 +85,7 @@ jobs:
 
       - name: Publicar artefato (web-${{ matrix.env }})
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-${{ matrix.env }}
           path: results/web-${{ matrix.env }}/
@@ -112,9 +112,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -125,7 +125,7 @@ jobs:
           pip install -r requirements-ci.txt
 
       - name: Baixar todos os artefatos
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
@@ -205,9 +205,18 @@ jobs:
         with:
           path: site
 
+      - name: Publicar relatório consolidado (download)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: relatorio-consolidado
+          path: site/
+          retention-days: 7
+          if-no-files-found: warn
+
   deploy:
     needs: report
-    if: github.ref == 'refs/heads/main' && always()
+    if: always() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -218,4 +227,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
