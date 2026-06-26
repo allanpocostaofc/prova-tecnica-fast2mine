@@ -73,7 +73,6 @@ jobs:
           rfbrowser init chromium
 
       - name: Executar suíte WEB (${{ matrix.env }})
-        continue-on-error: true
         run: |
           ENVL=$(echo "${{ matrix.env }}" | tr '[:upper:]' '[:lower:]')
           robot \
@@ -93,8 +92,22 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  gate:
+    name: All tests passed
+    needs: [web]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Verificar resultado da matriz
+        run: |
+          if [ "${{ needs.web.result }}" != "success" ]; then
+            echo "Um ou mais ambientes falharam nos testes."
+            exit 1
+          fi
+          echo "Todos os testes passaram."
+
   report:
-    needs: web
+    needs: [web, gate]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
